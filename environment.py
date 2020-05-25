@@ -123,6 +123,12 @@ class TradeEnv:
 
         return pnl
 
+    def calc_punishment(self, action):
+        if punishment is None:
+            return self.calc_reward(action)
+        else:
+            return punishment
+
     def step(self, action):
         # Agent used t-1 to make a decision
         # Agent now performs action in t
@@ -133,7 +139,7 @@ class TradeEnv:
         if action == 2:
             op = self.data.iloc[self.t, :]['open']
             if self.position > 0:
-                reward = self.calc_reward(action)  # punish if buying more
+                reward = self.calc_punishment(action)
             else:
                 # Buy at open
                 # print("Position = " + str(self.position))
@@ -145,7 +151,7 @@ class TradeEnv:
         elif action == 0:  # sell
             op = self.data.iloc[self.t, :]['open']
             if self.position == 0:
-                reward = self.calc_reward(action)  # punish if selling without a position
+                reward = self.calc_punishment(action)
             else:
                 # sell at open
                 # print("Selling at " + str(self.t))
