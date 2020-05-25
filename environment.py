@@ -13,6 +13,7 @@ TODO: Allow for scaling in and out of trades
 import api_helpers as helpers
 import pandas as pd
 import numpy as np
+from config import *
 
 
 class TradeEnv:
@@ -28,7 +29,7 @@ class TradeEnv:
         # Assumes each row in self.data contains all input features to NN
         row = self.data.iloc[self.t].values.flatten().tolist()
         # state = [self.position, self.value, self.pnl] + row
-        state = [self.pnl] + row
+        state = [self.pnl, self.position] + row
         return state
 
     def reset(self, data):
@@ -140,7 +141,7 @@ class TradeEnv:
                 self.position = op
                 self.cash -= self.vol * self.position
                 reward = self.calc_reward(action)
-                self.buys.append((self.t, op))
+            self.buys.append((self.t, op))
         elif action == 0:  # sell
             op = self.data.iloc[self.t, :]['open']
             if self.position == 0:
@@ -151,7 +152,7 @@ class TradeEnv:
                 reward = self.calc_reward(action)
                 self.cash += self.vol * op
                 self.position = 0
-                self.sells.append((self.t, op))
+            self.sells.append((self.t, op))
         else:  # hold
             reward = self.calc_reward(action)
         if (self.t == len(self.data) - 1):

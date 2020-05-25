@@ -2,6 +2,9 @@
 Actor Critic with a custom trading environment
 Based on https://github.com/keras-team/keras-io
 
+TODO:
+-mess with gamma
+-giving it smoothed data to get smoothed outputs
 """
 
 import numpy as np
@@ -15,23 +18,31 @@ from sklearn import preprocessing
 import matplotlib.pyplot as plt
 import vis_utils as vis
 import wandb
+from config import *
 
 # Hyperparameters
-num_episodes = 201  # Number of trading days to train on
-gamma = 0.99  # Discount factor for past rewards
-max_steps_per_episode = 390  # Number of minutes market is open
+# num_episodes = 201  # Number of trading days to train on
+# gamma = 0.99  # Discount factor for past rewards
+# max_steps_per_episode = 390  # Number of minutes market is open
 eps = np.finfo(
     np.float32).eps.item()  # Smallest number such that 1.0 + eps != 1.0
 optimizer = keras.optimizers.Adam(learning_rate=0.01)
 huber_loss = keras.losses.Huber()
+# punishment = -1  # For buying/selling inappropriately
 
 # AC params
 num_actions = 3
 
 # Logging
 log = True
-run_name = "PnL-2"
-group = "1H"
+run_name = "Knows-Position"
+group = "Unfiltered"
+config = {
+    "num_episodes": num_episodes,
+    "gamma": gamma,
+    "input": "sine",
+    "punishment": punishment
+}
 
 
 def train_episode(env, verbose, ep):
@@ -192,7 +203,10 @@ def create_model(num_inputs):
 
 if __name__ == '__main__':
     if log:
-        wandb.init(project="rl-trader", name=run_name, group=group)
+        wandb.init(project="rl-trader",
+                   name=run_name,
+                   group=group,
+                   config=config)
     # date = pd.to_datetime("05/21/2020")
     # data = helpers.get_min_data("KDMN", date)
     # data['ticker'] = "KDMN"
@@ -202,7 +216,7 @@ if __name__ == '__main__':
     # data['low'] = data.low.pct_change(1)
     # data['close'] = data.close.pct_change(1)
     # data['volume'] = data.volume.pct_change(1)
-    model = create_model(3)
+    model = create_model(4)
     time = np.arange(0, 100, 1)
     wave = np.sin(time)
     wave = wave + 1
