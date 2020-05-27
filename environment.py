@@ -13,11 +13,14 @@ TODO: Allow for scaling in and out of trades
 import api_helpers as helpers
 import pandas as pd
 import numpy as np
-from config import *
 
 
 class TradeEnv:
-    def __init__(self, memory):
+    def __init__(self, reward, cap_reward, punishment, filter_vis, memory):
+        self.reward = reward
+        self.cap_reward = cap_reward
+        self.punishment = punishment
+        self.filter_vis = filter_vis
         self.memory = memory
         self.init_cash = 100000
         self.cash = self.init_cash  # liquid equity
@@ -40,7 +43,8 @@ class TradeEnv:
         self.buys = []
         self.sells = []
         # do we need this?
-        self.history = [0 for _ in range(self.memory)]  # history of previous states
+        self.history = [0 for _ in range(self.memory)
+                        ]  # history of previous states
 
         # for now, reset balances
         self.init_cash = 100000
@@ -53,19 +57,6 @@ class TradeEnv:
     def get_pnl(self):
         return (self.cash - self.init_cash) / self.cash
 
-    # Old
-    # def calc_pnl(self):
-    #     gain = 0
-    #     if self.position > 0:
-    #         # Calculate realized/unrealized gain based on close
-    #         # This keeps pnl most uptodate
-    #         gain = self.vol * self.data.iloc[self.t, :]['close']
-
-    #     self.value = self.cash + gain
-    #     pnl = (self.value - self.init_cash) / self.init_cash
-
-    #     return pnl
-
     # Current trade PnL, returns 0 between trades
     # def calc_reward(self, action):
     #     pnl = 0.0
@@ -77,14 +68,6 @@ class TradeEnv:
     #             gain = self.data.iloc[self.t, :]['close'] - self.position
     #         pnl = gain / self.position
 
-    #     # Capping PnL
-    #     if pnl > 1:
-    #         pnl = 1
-    #     elif pnl < -1:
-    #         pnl = -1
-    #     return pnl
-
-    # Overall PnL
     def calc_reward(self, action):
         old_pnl = self.pnl
         gain = 0
@@ -99,35 +82,33 @@ class TradeEnv:
         self.value = self.cash + gain
         self.pnl = (self.value - self.init_cash) / self.init_cash
 
-        # Just PnL
-        pnl = self.pnl
+        reward = 0.0
+        if self.reward == "pnl":
+            reward = self.pnl
+        elif self.reward == "pnl-diff":
+            reward = self.pnl - old_pnl
+        elif self.reward == "pnl-2nd-diff":
+            if old_pnl == 0.0:
+                if self.pnl > 0:
+                    reward = 1.0
+                else:
+                    reward = -1.0
+            else:
+                reward = (self.pnl - old_pnl) / old_pnl
 
-        # Diff
-        # pnl = self.pnl - old_pnl
+        if self.cap_reward:
+            if reward < -1:
+                reward = -1
+            elif reward > 1:
+                reward = 1
 
-        # 2nd derivative
-        # pnl = 0.0
-        # if old_pnl == 0.0:
-        #     if self.pnl > 0:
-        #         pnl = 1.0
-        #     else:
-        #         pnl = -1.0
-        # else:
-        #     pnl = (self.pnl - old_pnl)/old_pnl
-
-        # Capping PnL
-        # if pnl < -1:
-        #     pnl = -1
-        # elif pnl > 1:
-        #     pnl = 1
-
-        return pnl
+        return reward
 
     def calc_punishment(self, action):
-        if punishment is None:
+        if self.punishment > 0:
             return self.calc_reward(action)
         else:
-            return punishment
+            return self.punishment
 
     def step(self, action):
         # Agent used t-1 to make a decision
@@ -140,25 +121,26 @@ class TradeEnv:
             op = self.data.iloc[self.t, :]['open']
             if self.position > 0:
                 reward = self.calc_punishment(action)
+                if not self.filter_vis:
+                    self.buys.append((self.t, op))
             else:
                 # Buy at open
-                # print("Position = " + str(self.position))
-                # print("Buying at " + str(self.t))
                 self.position = op
                 self.cash -= self.vol * self.position
                 reward = self.calc_reward(action)
-            self.buys.append((self.t, op))
+                self.buys.append((self.t, op))
         elif action == 0:  # sell
             op = self.data.iloc[self.t, :]['open']
             if self.position == 0:
                 reward = self.calc_punishment(action)
+                if not self.filter_vis:
+                    self.sells.append((self.t, op))
             else:
                 # sell at open
-                # print("Selling at " + str(self.t))
                 reward = self.calc_reward(action)
                 self.cash += self.vol * op
                 self.position = 0
-            self.sells.append((self.t, op))
+                self.sells.append((self.t, op))
         else:  # hold
             reward = self.calc_reward(action)
         if (self.t == len(self.data) - 1):

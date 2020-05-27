@@ -3,8 +3,8 @@ Actor Critic with a custom trading environment
 Based on https://github.com/keras-team/keras-io
 
 TODO:
--mess with gamma
 -giving it smoothed data to get smoothed outputs
+-hyperparams for optimizer
 """
 
 import numpy as np
@@ -18,31 +18,49 @@ from sklearn import preprocessing
 import matplotlib.pyplot as plt
 import vis_utils as vis
 import wandb
-from config import *
+
+log = True
 
 # Hyperparameters
-# num_episodes = 201  # Number of trading days to train on
-# gamma = 0.99  # Discount factor for past rewards
-# max_steps_per_episode = 390  # Number of minutes market is open
+rewards = ["pnl", "pnl-diff", "pnl-2nd-diff"]
+"""
+pnl = return total pnl at each time step
+pnl-diff = return (pnl - old_pnl) at each time step
+pnl-2nd-diff = return (pnl - old_pnl) / old_pnl at each time step
+"""
+hyperparameter_defaults = dict(learning_rate=0.001,
+                               gamma=0.99,
+                               epochs=201,
+                               reward=rewards[0],
+                               cap_reward=False,  # [-1, 1]
+                               punishment=1  # Positive = no punishment
+                               )
+
+# Env params
+filter_vis = True  # If true, will only visualize appropriate buys/sells
+max_steps_per_episode = 390  # Number of minutes market is open
+
+if log:
+    wandb.init(project="rl-trader", config=hyperparameter_defaults)
+    config = wandb.config
+    # Have to log potentially changed params (via sweep) after initialization
+    wandb.log({'filter_vis': filter_vis})
+    wandb.log({'learning_rate': config['learning_rate']})
+    wandb.log({'gamma': config['gamma']})
+    wandb.log({'epochs': config['epochs']})
+    wandb.log({'reward': config['reward']})
+    wandb.log({'cap_reward': config['cap_reward']})
+    wandb.log({'punishment': config['punishment']})
+else:
+    config = hyperparameter_defaults
+
 eps = np.finfo(
     np.float32).eps.item()  # Smallest number such that 1.0 + eps != 1.0
-optimizer = keras.optimizers.Adam(learning_rate=0.01)
+optimizer = keras.optimizers.Adam(learning_rate=config['learning_rate'])
 huber_loss = keras.losses.Huber()
-# punishment = -1  # For buying/selling inappropriately
 
 # AC params
 num_actions = 3
-
-# Logging
-log = True
-run_name = "Knows-Position"
-group = "Unfiltered"
-config = {
-    "num_episodes": num_episodes,
-    "gamma": gamma,
-    "input": "sine",
-    "punishment": punishment
-}
 
 
 def train_episode(env, verbose, ep):
@@ -87,7 +105,7 @@ def train_episode(env, verbose, ep):
         qvals = []
         discounted_sum = 0
         for r in rewards_history[::-1]:
-            discounted_sum = r + gamma * discounted_sum
+            discounted_sum = r + config['gamma'] * discounted_sum
             qvals.insert(0, discounted_sum)
 
         # Normalize
@@ -152,16 +170,15 @@ def train_episode(env, verbose, ep):
 
 
 def train(model, data):
-    env = TradeEnv(1)
+    env = TradeEnv(config['reward'], config['cap_reward'], config['punishment'], filter_vis, 1)
     verbose = False
-    for x in range(1, num_episodes):
+    for x in range(1, config['epochs']):
         print("Training on sine wave")
-        if x == num_episodes:
+        if x == config['epochs']:
             verbose = True
         env.reset(data)
         train_episode(env, verbose, x)
         if (x % 100 == 0) or (x == 1):
-            # vis.plot_trades(env.data, env.buys, env.sells)
             plot = vis.get_trade_plot(env.data, env.buys, env.sells)
             if log:
                 wandb.log({'Trades': plot}, step=x)
@@ -202,11 +219,6 @@ def create_model(num_inputs):
 
 
 if __name__ == '__main__':
-    if log:
-        wandb.init(project="rl-trader",
-                   name=run_name,
-                   group=group,
-                   config=config)
     # date = pd.to_datetime("05/21/2020")
     # data = helpers.get_min_data("KDMN", date)
     # data['ticker'] = "KDMN"
@@ -219,7 +231,7 @@ if __name__ == '__main__':
     model = create_model(4)
     time = np.arange(0, 100, 1)
     wave = np.sin(time)
-    wave = wave + 1
+    wave = wave + 1.1
     # plt.plot(time, wave)
     # plt.show()
     data = pd.DataFrame({'close': wave, 'open': wave})

@@ -1,0 +1,19 @@
+program: actor_critic.py
+method: random
+metric:
+  name: PnL
+  goal: maximize
+parameters:
+  learning_rate:
+    min: 0.0001
+    max: 0.01
+  gamma:
+    min: 0.5
+    max: 0.99
+  reward:
+    values: ["pnl", "pnl-diff", "pnl-2nd-diff"]
+  cap_reward:
+    values: [True, False]
+  punishment:
+    min: -1.0
+    max: 1.0
